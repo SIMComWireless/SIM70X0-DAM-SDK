@@ -92,9 +92,11 @@ PYTHON_PATH := c:/Python27/python.exe
 # Windows
 build_llvm_mk.bat
 
-# Linux
+# Linux(Contact SIMCom FAE for Linux support)
 ./build_llvm_mk.sh
 ```
+>[!NOTE]
+>Note: If there is any error,please refer to build.log for bug fix.
 
 The compiled binary will be generated at `ciot_sdk_9205/bin/cust_app.bin`.
 
@@ -105,7 +107,7 @@ The compiled binary will be generated at `ciot_sdk_9205/bin/cust_app.bin`.
 3. Browse and select `cust_app.bin`
 4. Power on the module and click **Start**
 5. The application will auto-run after reboot
-
+![APP_Download](doc/APP_Update.png)
 ## Development
 
 ### Entry Point
