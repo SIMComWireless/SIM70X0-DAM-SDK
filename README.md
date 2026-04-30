@@ -223,8 +223,7 @@ Contact your SIMCom FAE for QPST tool access and support.
 | SPI_MOSI     | 40      | GPIO4   | SPI2_MOSI   | UART2_TX    | -           | Y         | boot_config[3]           |
 ## Resources
 
-- [SIMCom M2M Official Website](http://www.simcomm2m.com)
-- [SIMCom EAT/DAM Application Notes](http://www.simcomm2m.com) — Contact your SIMCom FAE
+- [SIMCom M2M Official Website](http://www.simcom.com)
 - ThreadX API Reference: `SIM70X0 Series_ThreadX_API_V1.00`
 - QAPI Reference: `SIM70X0 Series_QAPI_V1.00`
 
