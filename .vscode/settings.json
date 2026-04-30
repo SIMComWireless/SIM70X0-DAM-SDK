@@ -1,0 +1,19 @@
+{
+    "makefile.extensionOutputFolder": "./.vscode",
+    "files.associations": {
+        "cstddef": "c",
+        "type_traits": "c",
+        "tx_api.h": "c",
+        "qapi.h": "c",
+        "threadx.h": "c",
+        "qapi_types.h": "c",
+        "txm_module.h": "c",
+        "iic_demo.h": "c",
+        "rtos_demo.h": "c",
+        "elog.h": "c",
+        "qapi_uart.h": "c",
+        "gpio_int_demo.h": "c",
+        "qapi_fs_types.h": "c",
+        "qapi_fs.h": "c"
+    }
+}
