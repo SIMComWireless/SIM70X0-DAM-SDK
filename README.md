@@ -1,5 +1,8 @@
 ![simcom_logo](doc/simcom_logo.png)
-# SIM70X0 (MDM9205) DAM SDK
+# SIM70X0 (MDM9205) DAM SDK(TX1.0)
+
+> [!IMPORTANT]
+> Note: This SDK can only apply to SIMCom SIM7070\7080\7090 series of module with TX1.0 baseline FW(FW name with 1951BxxSIM70x0),if you need TX2.0 SDK(FW name with 2117BxxSIM70x0) please go to DAM TX2.0 with this github account.
 
 Downloadable Application Module (DAM) SDK for SIMCom SIM7070/SIM7080/SIM7090 series modules based on Qualcomm MDM9205 chipset.
 
