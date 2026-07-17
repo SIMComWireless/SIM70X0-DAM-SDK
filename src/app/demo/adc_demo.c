@@ -108,26 +108,33 @@ void adc_demo_read_status_log(qapi_ADC_Read_Result_t status)
  * @retval DAM_STATUS_SUCCESS  ADC device opened successfully.
  * @retval DAM_STATUS_ERROR    Failed to open ADC device.
  */
+/**
+ * @brief Open the ADC device for subsequent channel reads.
+ *
+ * Acquires an ADC handle from the QAPI layer.  Uses a static flag
+ * to ensure the device is only opened once.
+ *
+ * @retval DAM_STATUS_SUCCESS  ADC device opened (or already open).
+ * @retval DAM_STATUS_ERROR    Failed to open ADC device.
+ */
 DAM_Status_t adc_demo_Open(VOID)
 {
     uint32_t id = 0;
-	static uint8_t adc_open_flag = 0;
+    static uint8_t adc_open_flag = 0;
     status = QAPI_ERROR;
-	if(!adc_open_flag)
-	{
-	    status = qapi_ADC_Open(&handle, id);
-	    if (status != QAPI_OK)
-	    {
-	        log_i("open adc failed !!! %s",adc_demo_error_to_string(status));
-			return DAM_STATUS_ERROR;
-	    }
-	    else
-	    {
-	    	adc_open_flag = 1;
-	        log_i("open adc succeeded !!!");
-			return DAM_STATUS_SUCCESS;
-	    }
-	}
+
+    if (!adc_open_flag)
+    {
+        status = qapi_ADC_Open(&handle, id);
+        if (status != QAPI_OK)
+        {
+            log_e("open adc failed: %s", adc_demo_error_to_string(status));
+            return DAM_STATUS_ERROR;
+        }
+        adc_open_flag = 1;
+        log_i("open adc succeeded");
+    }
+    return DAM_STATUS_SUCCESS;
 }
 
 /**

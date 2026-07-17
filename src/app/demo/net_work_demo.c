@@ -48,6 +48,7 @@ extern TX_SEMAPHORE *Net_Active_semaphore;
 char g_APN[50] = {0};
 qapi_DSS_Net_Evt_t socket_last_evt;
 static qapi_DSS_Hndl_t NW_dss_handle;
+static bool dss_initialized = false;
 
 /**
   * @brief  DSS event error code print string.
@@ -195,7 +196,10 @@ bool DAM_NW_dss_init(char * APN)
     int result = 0;
     qapi_DSS_Call_Param_Value_t param_info;
 
-	qapi_DSS_Init(QAPI_DSS_MODE_GENERAL);
+    if (!dss_initialized) {
+        qapi_DSS_Init(QAPI_DSS_MODE_GENERAL);
+        dss_initialized = true;
+    }
 
 	if (qapi_DSS_Get_Data_Srvc_Hndl(DAM_NW_dss_cb, NULL, &NW_dss_handle) == QAPI_OK)
   	{
@@ -220,12 +224,14 @@ bool DAM_NW_dss_init(char * APN)
         param_info.num_val = 1;
         result = qapi_DSS_Set_Data_Call_Param(NW_dss_handle, QAPI_DSS_CALL_INFO_UMTS_PROFILE_IDX_E, &param_info);
 
-        if(APN != NULL)
+        if (APN != NULL)
         {
-	        memcpy(g_APN, APN, strlen(APN));
+            strncpy(g_APN, APN, sizeof(g_APN) - 1);
+            g_APN[sizeof(g_APN) - 1] = '\0';
             param_info.buf_val = APN;
             param_info.num_val = strlen(APN);
-            result = qapi_DSS_Set_Data_Call_Param(NW_dss_handle, QAPI_DSS_CALL_INFO_APN_NAME_E, &param_info);
+            result = qapi_DSS_Set_Data_Call_Param(NW_dss_handle,
+                       QAPI_DSS_CALL_INFO_APN_NAME_E, &param_info);
         }
 	    else
         {

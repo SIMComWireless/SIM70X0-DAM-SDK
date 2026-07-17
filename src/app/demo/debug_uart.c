@@ -27,35 +27,43 @@
 #include "txm_module.h"
 
 #include "../Easylogger/elog.h"
-
-UCHAR			   LOG_stack[1024]; 
+#include "debug_port_cfg.h"
 
 #define DEBUG_MAX_SEND_BUFFER_SIZE 1024
 
-TX_THREAD			* UartRx_Thread_Handle;		 
-UCHAR			    UartRx_Thread_stack[1024*5]; 
+/** @brief Mutex protecting Debug_Printf static buffers (shared by USB/UART). */
+TX_MUTEX *Debug_Printf_mutex;
+
+#ifdef DEBUG_USE_UART
+TX_THREAD			* UartRx_Thread_Handle;
+UCHAR			    UartRx_Thread_stack[1024*5];
 
 TX_SEMAPHORE *UartRx_semaphore;
 
 #define UartRxSize 1024
 char UartRxBuf[UartRxSize]={0};
-volatile UartRx_num_bytes;
+volatile uint32_t UartRx_num_bytes;
 
 qapi_UART_Handle_t handle;
 
-void Debug_Printf(char* format, ...);
-void Debug_USB_Printf(char* format, ...);
+/** @brief Signalled when UART TX DMA completes. */
+TX_SEMAPHORE *UartTx_semaphore;
+#endif /* DEBUG_USE_UART */
 
-#define 		EASYLOG_STACK_SIZE 2*1024
+#ifdef DEBUG_USE_USB
+static bool usb_initialized = false;
+#endif
+
+#define 		EASYLOG_STACK_SIZE (2 * 1024)
 extern void Easylog_async_output_task(void *arg);
 TX_THREAD		*Easylog_Thread_Handle;
 UCHAR			Easylog_stack[EASYLOG_STACK_SIZE];
 extern TX_SEMAPHORE *elog_dma_lockHandle;
 
 void UART_Write(uint32_t Length, const char *Buffer);
-void Debug_USB_Printf(char* format, ...);
 void Debug_Printf(char* format, ...);
 
+#ifdef DEBUG_USE_UART
 /**
  * @brief UART RX callback invoked by QAPI when data arrives.
  *
@@ -68,20 +76,25 @@ void Debug_Printf(char* format, ...);
 static void dam_cli_rx_cb(uint32_t num_bytes, void *cb_data)
 {
     UartRx_num_bytes=num_bytes;
-    tx_semaphore_put(UartRx_semaphore);	
+    tx_semaphore_put(UartRx_semaphore);
 }
 
 /**
  * @brief UART TX completion callback.
  *
- * Released the EasyLogger DMA lock semaphore when a TX completes.
+ * Signals the UART TX semaphore when a DMA transfer completes.
+ * Also signals the EasyLogger DMA lock semaphore so elog_port_output
+ * can unblock after its UART_Write completes.
  *
  * @param[in] num_bytes Number of bytes transmitted.
  * @param[in] cb_data Pointer to callback-specific data (unused).
  */
 static void dam_cli_tx_cb(uint32_t num_bytes, void *cb_data)
 {
-    tx_semaphore_put(elog_dma_lockHandle);
+    if (elog_dma_lockHandle)
+        tx_semaphore_put(elog_dma_lockHandle);
+    if (UartTx_semaphore)
+        tx_semaphore_put(UartTx_semaphore);
 }
 
 /**
@@ -95,30 +108,45 @@ static void dam_cli_tx_cb(uint32_t num_bytes, void *cb_data)
  */
 void UartRx_Thread(void *Param)
 {
-	
 	while (1)
+	{
+		tx_semaphore_get(UartRx_semaphore, TX_WAIT_FOREVER);
+		if(QAPI_OK == qapi_UART_Receive(handle, UartRxBuf, UartRxSize, 0))
 		{
-      tx_semaphore_get(UartRx_semaphore, TX_WAIT_FOREVER);
-      if(QAPI_OK == qapi_UART_Receive(handle, UartRxBuf, UartRxSize, 0))
-		  {
-        log_i("Uart RX->UartRx_num_bytes:%d",UartRx_num_bytes);
-		  }
+			log_i("Uart RX->UartRx_num_bytes:%d",UartRx_num_bytes);
 		}
-  
+	}
 }
+#endif /* DEBUG_USE_UART */
 
 /**
- * @brief Initialize UART port and start EasyLogger (if enabled).
+ * @brief Initialize debug output port and start EasyLogger.
  *
- * Opens the configured UART port, creates the RX semaphore and thread,
- * configures EasyLogger formatting and starts the async logging task
- * when ELOG_ASYNC_OUTPUT_ENABLE is defined.
+ * When DEBUG_USE_UART is defined: opens UART, creates RX thread,
+ * configures DMA-based TX. Elog async task waits on DMA completion.
+ *
+ * When DEBUG_USE_USB is defined: opens USB virtual serial (blocking I/O).
+ * Elog async task still runs — reads ring buffer, writes via USB (blocking).
+ * No DMA callback needed since qapi_USB_Write is synchronous.
  */
 void Uart_Debug_Initialize(void)
 {
    int Result;
    UINT status;
-	
+
+   /* Allocate and create mutex for Debug_Printf thread safety */
+   status = txm_module_object_allocate(&Debug_Printf_mutex, sizeof(TX_MUTEX));
+   if(status != TX_SUCCESS)
+   {
+     return;
+   }
+   status = tx_mutex_create(Debug_Printf_mutex, "Debug_Printf_mutex", TX_NO_INHERIT);
+   if(status != TX_SUCCESS)
+   {
+     return;
+   }
+
+#ifdef DEBUG_USE_UART
    qapi_UART_Open_Config_t open_properties;
    open_properties.parity_Mode = QAPI_UART_NO_PARITY_E;
    open_properties.num_Stop_Bits= QAPI_UART_1_0_STOP_BITS_E;
@@ -133,67 +161,107 @@ void Uart_Debug_Initialize(void)
    {
       return;
    }
+   qapi_UART_Power_On(handle);
+   qapi_UART_Receive(handle, UartRxBuf, UartRxSize, 0);
+
+   /* Allocate and create UART TX completion semaphore */
+   status = txm_module_object_allocate(&UartTx_semaphore, sizeof(TX_SEMAPHORE));
+   if(status != TX_SUCCESS)
+   {
+     return;
+   }
+   status = tx_semaphore_create(UartTx_semaphore, "UartTx_semaphore", 0);
+   if(status != TX_SUCCESS)
+   {
+     return;
+   }
+
+   /* definition and creation of UartRx_semaphore */
+   status = txm_module_object_allocate(&UartRx_semaphore, sizeof(TX_SEMAPHORE));
+   if(status != TX_SUCCESS)
+   {
+     return;
+   }
+   status = tx_semaphore_create(UartRx_semaphore,"UartRx_semaphore_name", 0);
+   if(status != TX_SUCCESS)
+   {
+     return;
+   }
+
+   /* definition and creation of UartRx_Thread */
+   status = txm_module_object_allocate(&UartRx_Thread_Handle, sizeof(TX_THREAD));
+   if(status != TX_SUCCESS)
+   {
+     /* non-fatal, RX thread is optional */
+   }
    else
    {
-    qapi_UART_Power_On(handle);
-    qapi_UART_Receive(handle,  UartRxBuf, UartRxSize, 0);
+     Result = tx_thread_create(UartRx_Thread_Handle, "UartRx Thread",
+                               UartRx_Thread, 0, UartRx_Thread_stack,
+                               sizeof(UartRx_Thread_stack),
+                               148, 148, TX_NO_TIME_SLICE, TX_AUTO_START);
+     if(Result != TX_SUCCESS)
+     {
+         /* non-fatal */
+     }
+   }
+#endif /* DEBUG_USE_UART */
 
-      /* definition and creation of UartRx_semaphore */	
-    txm_module_object_allocate(&UartRx_semaphore, sizeof(TX_SEMAPHORE)); 
-    status = tx_semaphore_create(UartRx_semaphore,"UartRx_semaphore_name", 0);
-    if(status != TX_SUCCESS)
-    {
-      log_e("Failed to start UartRx_semaphore");
-    }
-
-    /* definition and creation of UartRx_Thread */
-    txm_module_object_allocate(&UartRx_Thread_Handle, sizeof(TX_THREAD));
-    Result = tx_thread_create(UartRx_Thread_Handle, "UartRx Thread", UartRx_Thread, 152, UartRx_Thread_stack,
-                                    sizeof(LOG_stack), 150, 150, TX_NO_TIME_SLICE, TX_AUTO_START);
-    if(Result != TX_SUCCESS)
-      {
-          Debug_Printf("Failed to start UartRx thread\r\n");
-      }
-    }
-
-   if (elog_init() == ELOG_NO_ERR)
-	{
-		/* set enabled format */
-		elog_set_fmt(ELOG_LVL_ASSERT, ELOG_FMT_ALL & ~ELOG_FMT_P_INFO);
-		elog_set_fmt(ELOG_LVL_ERROR, ELOG_FMT_ALL );
-		elog_set_fmt(ELOG_LVL_WARN, ELOG_FMT_LVL | ELOG_FMT_TAG | ELOG_FMT_TIME);
-		elog_set_fmt(ELOG_LVL_INFO, ELOG_FMT_TAG | ELOG_FMT_TIME);
-		elog_set_fmt(ELOG_LVL_DEBUG, ELOG_FMT_ALL & ~(ELOG_FMT_FUNC | ELOG_FMT_P_INFO));
-		elog_set_fmt(ELOG_LVL_VERBOSE, ELOG_FMT_ALL & ~(ELOG_FMT_FUNC | ELOG_FMT_P_INFO));
-
-		elog_set_text_color_enabled( true );
-    elog_async_enabled(true);
-		
-		#ifdef ELOG_BUF_OUTPUT_ENABLE
-		elog_buf_enabled( true );
-		#endif
-		/* start EasyLogger */
-		elog_start();
-	}
-
-#ifdef ELOG_ASYNC_OUTPUT_ENABLE
-	/* definition and creation of Easylog_async_output_task */
-	txm_module_object_allocate(&Easylog_Thread_Handle, sizeof(TX_THREAD));
-    Result = tx_thread_create(Easylog_Thread_Handle, "Easylog Thread", Easylog_async_output_task, 152, Easylog_stack,
-                                  EASYLOG_STACK_SIZE, 161, 161, TX_NO_TIME_SLICE, TX_AUTO_START);
-	if(Result != TX_SUCCESS)
-    {
-        Debug_Printf("Failed to start Easylog Thread");
-    }
+#ifdef DEBUG_USE_USB
+   if(qapi_USB_Open() == QAPI_OK)
+   {
+     usb_initialized = true;
+   }
+   /* USB is blocking, no semaphore or RX thread needed */
 #endif
 
+   if (elog_init() == ELOG_NO_ERR)
+   {
+       /* set enabled format */
+       elog_set_fmt(ELOG_LVL_ASSERT, ELOG_FMT_ALL & ~ELOG_FMT_P_INFO);
+       elog_set_fmt(ELOG_LVL_ERROR, ELOG_FMT_ALL );
+       elog_set_fmt(ELOG_LVL_WARN, ELOG_FMT_LVL | ELOG_FMT_TAG | ELOG_FMT_TIME);
+       elog_set_fmt(ELOG_LVL_INFO, ELOG_FMT_TAG | ELOG_FMT_TIME);
+       elog_set_fmt(ELOG_LVL_DEBUG, ELOG_FMT_ALL & ~(ELOG_FMT_FUNC | ELOG_FMT_P_INFO));
+       elog_set_fmt(ELOG_LVL_VERBOSE, ELOG_FMT_ALL & ~(ELOG_FMT_FUNC | ELOG_FMT_P_INFO));
+
+       elog_set_text_color_enabled( true );
+
+       /* Async mode: log_i() writes to ring buffer, async task handles output.
+        * UART: async task waits on DMA completion semaphore after UART_Write.
+        * USB:  async task calls qapi_USB_Write (blocking, no DMA callback). */
+       elog_async_enabled(true);
+
+       #ifdef ELOG_BUF_OUTPUT_ENABLE
+       elog_buf_enabled( true );
+       #endif
+       /* start EasyLogger */
+       elog_start();
+   }
+
+#ifdef ELOG_ASYNC_OUTPUT_ENABLE
+   /* definition and creation of Easylog_async_output_task */
+   status = txm_module_object_allocate(&Easylog_Thread_Handle, sizeof(TX_THREAD));
+   if(status != TX_SUCCESS)
+   {
+       return;
+   }
+   Result = tx_thread_create(Easylog_Thread_Handle, "Easylog Thread", Easylog_async_output_task, 152, Easylog_stack,
+                                 EASYLOG_STACK_SIZE, 170, 170, TX_NO_TIME_SLICE, TX_AUTO_START);
+   if(Result != TX_SUCCESS)
+   {
+       /* non-fatal */
+   }
+#endif /* ELOG_ASYNC_OUTPUT_ENABLE */
 }
 
 /**
- * @brief Write raw bytes to the UART port.
+ * @brief Write raw bytes to the selected debug output port.
  *
- * Sends `Length` bytes from `Buffer` using `qapi_UART_Transmit`.
- * The UART must be opened prior to calling this function.
+ * UART mode: sends via async DMA (`qapi_UART_Transmit`), caller must
+ *            wait on completion semaphore for synchronous behavior.
+ * USB mode:  sends via blocking `qapi_USB_Write`, returns after data
+ *            is written (no completion callback needed).
  *
  * @param[in] Length Number of bytes to write.
  * @param[in] Buffer Pointer to data to transmit.
@@ -202,15 +270,21 @@ void UART_Write(uint32_t Length, const char *Buffer)
 {
    if((Length) && (Buffer))
    {
-       qapi_UART_Transmit(handle,Buffer, Length, (void*)Buffer);
+#ifdef DEBUG_USE_UART
+       qapi_UART_Transmit(handle, Buffer, Length, (void*)Buffer);
+#endif
+#ifdef DEBUG_USE_USB
+       if(usb_initialized)
+           qapi_USB_Write((void*)Buffer, (uint16_t)Length);
+#endif
    }
 }
 
 /**
- * @brief Formatted printf-like output over UART.
+ * @brief Formatted printf-like output to the selected debug port.
  *
  * Formats the supplied arguments into a temporary buffer and writes the
- * result to UART via `UART_Write`. The UART must be initialized first.
+ * result via UART (DMA + semaphore wait) or USB (blocking write).
  *
  * @param[in] format printf-style format string.
  * @param[in] ... format arguments.
@@ -219,36 +293,17 @@ void Debug_Printf(char* format, ...)
 {
     static char str_tmp[DEBUG_MAX_SEND_BUFFER_SIZE] = {0};
     int Length=0;
-    va_list vArgList; 
-    va_start (vArgList, format); 
+    va_list vArgList;
+    tx_mutex_get(Debug_Printf_mutex, TX_WAIT_FOREVER);
+    va_start (vArgList, format);
     Length=vsnprintf(str_tmp, DEBUG_MAX_SEND_BUFFER_SIZE, format, vArgList);
     va_end(vArgList);
-    UART_Write(Length,str_tmp);
-    //qapi_Timer_Sleep(2,QAPI_TIMER_UNIT_MSEC,true);
-}
-
-/**
- * @brief Formatted printf-like output over USB.
- *
- * Formats the supplied arguments into a temporary buffer and writes the
- * result to USB using `qapi_USB_Write`. Attempts to open USB on first use.
- *
- * @param[in] format printf-style format string.
- * @param[in] ... format arguments.
- */
-void Debug_USB_Printf(char* format, ...)
-{
-    static char str_tmp[DEBUG_MAX_SEND_BUFFER_SIZE] = {0};
-    int Length=0;
-    va_list vArgList; 
-    static qapi_USB_Status_t usb_status=-1;
-    if(usb_status!= QAPI_OK){
-      usb_status = qapi_USB_Open();
-    }
-    va_start (vArgList, format); 
-    Length=vsnprintf(str_tmp, DEBUG_MAX_SEND_BUFFER_SIZE, format, vArgList);
-    va_end(vArgList);
-    qapi_USB_Write(str_tmp,Length);
-    qapi_Timer_Sleep(2,QAPI_TIMER_UNIT_MSEC,true);
+    UART_Write(Length, str_tmp);
+#ifdef DEBUG_USE_UART
+    /* UART uses async DMA — wait for TX completion callback */
+    tx_semaphore_get(UartTx_semaphore, TX_WAIT_FOREVER);
+#endif
+    /* USB: qapi_USB_Write already returned after blocking write */
+    tx_mutex_put(Debug_Printf_mutex);
 }
 

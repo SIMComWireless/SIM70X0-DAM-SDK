@@ -28,7 +28,7 @@
 #define DEMO_BYTE_POOL_SIZE     9120
 #define DEMO_BLOCK_POOL_SIZE    100
 #define DEMO_QUEUE_SIZE         100
-#define DEMO_TASK_PRIORITY_BASE 160
+#define DEMO_TASK_PRIORITY_BASE 170
 
 /* Define the ThreadX object control blocks...  */
 
@@ -80,114 +80,138 @@ void    thread_6_and_7_entry(ULONG thread_input);
 int rtos_demo_entry(void)
 {
     CHAR    *pointer = TX_NULL;
+    UINT    status;
 
     /* Create a byte memory pool from which to allocate the thread stacks.  */
-    txm_module_object_allocate(&byte_pool_0, sizeof(TX_BYTE_POOL));
-    tx_byte_pool_create(byte_pool_0, "byte pool 0", memory_area, DEMO_BYTE_POOL_SIZE);
+    status = txm_module_object_allocate(&byte_pool_0, sizeof(TX_BYTE_POOL));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate byte_pool_0: %d", status);
+    status = tx_byte_pool_create(byte_pool_0, "byte pool 0",
+                                 memory_area, DEMO_BYTE_POOL_SIZE);
+    if (status != TX_SUCCESS)
+        log_e("Failed to create byte pool 0: %d", status);
 
     log_i("Allocate memory byte pool 0");
-
-    /* Put system definition stuff in here, e.g. thread creates and other assorted
-       create information.  */
 
     /* Allocate the stack for thread 0.  */
     tx_byte_allocate(byte_pool_0, (VOID **) &pointer, DEMO_STACK_SIZE, TX_NO_WAIT);
 
     /* Create the main thread.  */
-    txm_module_object_allocate(&thread_0, sizeof(TX_THREAD));
-    tx_thread_create(thread_0, "thread 0", thread_0_entry, 0,  
-            pointer, DEMO_STACK_SIZE, 
+    status = txm_module_object_allocate(&thread_0, sizeof(TX_THREAD));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate thread_0: %d", status);
+    tx_thread_create(thread_0, "thread 0", thread_0_entry, 0,
+            pointer, DEMO_STACK_SIZE,
             DEMO_TASK_PRIORITY_BASE+1, DEMO_TASK_PRIORITY_BASE+1, TX_NO_TIME_SLICE, TX_AUTO_START);
-
 
     /* Allocate the stack for thread 1.  */
     tx_byte_allocate(byte_pool_0, (VOID **) &pointer, DEMO_STACK_SIZE, TX_NO_WAIT);
 
-    /* Create threads 1 and 2. These threads pass information through a ThreadX 
-       message queue.  It is also interesting to note that these threads have a time
-       slice.  */
-    txm_module_object_allocate(&thread_1, sizeof(TX_THREAD));
-    tx_thread_create(thread_1, "thread 1", thread_1_entry, 1,  
-            pointer, DEMO_STACK_SIZE, 
+    /* Create threads 1 and 2.  */
+    status = txm_module_object_allocate(&thread_1, sizeof(TX_THREAD));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate thread_1: %d", status);
+    tx_thread_create(thread_1, "thread 1", thread_1_entry, 1,
+            pointer, DEMO_STACK_SIZE,
             DEMO_TASK_PRIORITY_BASE+16, DEMO_TASK_PRIORITY_BASE+16, 4, TX_AUTO_START);
 
     /* Allocate the stack for thread 2.  */
     tx_byte_allocate(byte_pool_0, (VOID **) &pointer, DEMO_STACK_SIZE, TX_NO_WAIT);
 
-    txm_module_object_allocate(&thread_2, sizeof(TX_THREAD));
-    tx_thread_create(thread_2, "thread 2", thread_2_entry, 2,  
-            pointer, DEMO_STACK_SIZE, 
+    status = txm_module_object_allocate(&thread_2, sizeof(TX_THREAD));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate thread_2: %d", status);
+    tx_thread_create(thread_2, "thread 2", thread_2_entry, 2,
+            pointer, DEMO_STACK_SIZE,
             DEMO_TASK_PRIORITY_BASE+16, DEMO_TASK_PRIORITY_BASE+16, 4, TX_AUTO_START);
 
     /* Allocate the stack for thread 3.  */
     tx_byte_allocate(byte_pool_0, (VOID **) &pointer, DEMO_STACK_SIZE, TX_NO_WAIT);
 
-    /* Create threads 3 and 4.  These threads compete for a ThreadX counting semaphore.  
-       An interesting thing here is that both threads share the same instruction area.  */
-    txm_module_object_allocate(&thread_3, sizeof(TX_THREAD));
-    tx_thread_create(thread_3, "thread 3", thread_3_and_4_entry, 3,  
-            pointer, DEMO_STACK_SIZE, 
+    /* Create threads 3 and 4.  */
+    status = txm_module_object_allocate(&thread_3, sizeof(TX_THREAD));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate thread_3: %d", status);
+    tx_thread_create(thread_3, "thread 3", thread_3_and_4_entry, 3,
+            pointer, DEMO_STACK_SIZE,
             DEMO_TASK_PRIORITY_BASE+8, DEMO_TASK_PRIORITY_BASE+8, TX_NO_TIME_SLICE, TX_AUTO_START);
 
     /* Allocate the stack for thread 4.  */
     tx_byte_allocate(byte_pool_0, (VOID **) &pointer, DEMO_STACK_SIZE, TX_NO_WAIT);
 
-    txm_module_object_allocate(&thread_4, sizeof(TX_THREAD));
-    tx_thread_create(thread_4, "thread 4", thread_3_and_4_entry, 4,  
-            pointer, DEMO_STACK_SIZE, 
+    status = txm_module_object_allocate(&thread_4, sizeof(TX_THREAD));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate thread_4: %d", status);
+    tx_thread_create(thread_4, "thread 4", thread_3_and_4_entry, 4,
+            pointer, DEMO_STACK_SIZE,
             DEMO_TASK_PRIORITY_BASE+8, DEMO_TASK_PRIORITY_BASE+8, TX_NO_TIME_SLICE, TX_AUTO_START);
 
     /* Allocate the stack for thread 5.  */
     tx_byte_allocate(byte_pool_0, (VOID **) &pointer, DEMO_STACK_SIZE, TX_NO_WAIT);
 
-    /* Create thread 5.  This thread simply pends on an event flag which will be set
-       by thread_0.  */
-    txm_module_object_allocate(&thread_5, sizeof(TX_THREAD));
-    tx_thread_create(thread_5, "thread 5", thread_5_entry, 5,  
-            pointer, DEMO_STACK_SIZE, 
+    /* Create thread 5.  */
+    status = txm_module_object_allocate(&thread_5, sizeof(TX_THREAD));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate thread_5: %d", status);
+    tx_thread_create(thread_5, "thread 5", thread_5_entry, 5,
+            pointer, DEMO_STACK_SIZE,
             DEMO_TASK_PRIORITY_BASE+4, DEMO_TASK_PRIORITY_BASE+4, TX_NO_TIME_SLICE, TX_AUTO_START);
 
     /* Allocate the stack for thread 6.  */
     tx_byte_allocate(byte_pool_0, (VOID **) &pointer, DEMO_STACK_SIZE, TX_NO_WAIT);
 
-    /* Create threads 6 and 7.  These threads compete for a ThreadX mutex.  */
-    txm_module_object_allocate(&thread_6, sizeof(TX_THREAD));
-    tx_thread_create(thread_6, "thread 6", thread_6_and_7_entry, 6,  
-            pointer, DEMO_STACK_SIZE, 
+    /* Create threads 6 and 7.  */
+    status = txm_module_object_allocate(&thread_6, sizeof(TX_THREAD));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate thread_6: %d", status);
+    tx_thread_create(thread_6, "thread 6", thread_6_and_7_entry, 6,
+            pointer, DEMO_STACK_SIZE,
             DEMO_TASK_PRIORITY_BASE+8, DEMO_TASK_PRIORITY_BASE+8, TX_NO_TIME_SLICE, TX_AUTO_START);
 
     /* Allocate the stack for thread 7.  */
     tx_byte_allocate(byte_pool_0, (VOID **) &pointer, DEMO_STACK_SIZE, TX_NO_WAIT);
 
-    txm_module_object_allocate(&thread_7, sizeof(TX_THREAD));
-    tx_thread_create(thread_7, "thread 7", thread_6_and_7_entry, 7,  
-            pointer, DEMO_STACK_SIZE, 
+    status = txm_module_object_allocate(&thread_7, sizeof(TX_THREAD));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate thread_7: %d", status);
+    tx_thread_create(thread_7, "thread 7", thread_6_and_7_entry, 7,
+            pointer, DEMO_STACK_SIZE,
             DEMO_TASK_PRIORITY_BASE+8, DEMO_TASK_PRIORITY_BASE+8, TX_NO_TIME_SLICE, TX_AUTO_START);
 
     /* Allocate the message queue.  */
     tx_byte_allocate(byte_pool_0, (VOID **) &pointer, DEMO_QUEUE_SIZE*sizeof(ULONG), TX_NO_WAIT);
 
     /* Create the message queue shared by threads 1 and 2.  */
-    txm_module_object_allocate(&queue_0, sizeof(TX_QUEUE));
+    status = txm_module_object_allocate(&queue_0, sizeof(TX_QUEUE));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate queue_0: %d", status);
     tx_queue_create(queue_0, "queue 0", TX_1_ULONG, pointer, DEMO_QUEUE_SIZE*sizeof(ULONG));
 
     /* Create the semaphore used by threads 3 and 4.  */
-    txm_module_object_allocate(&semaphore_0, sizeof(TX_SEMAPHORE));
+    status = txm_module_object_allocate(&semaphore_0, sizeof(TX_SEMAPHORE));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate semaphore_0: %d", status);
     tx_semaphore_create(semaphore_0, "semaphore 0", 1);
 
     /* Create the event flags group used by threads 1 and 5.  */
-    txm_module_object_allocate(&event_flags_0, sizeof(TX_EVENT_FLAGS_GROUP));
+    status = txm_module_object_allocate(&event_flags_0, sizeof(TX_EVENT_FLAGS_GROUP));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate event_flags_0: %d", status);
     tx_event_flags_create(event_flags_0, "event flags 0");
 
     /* Create the mutex used by thread 6 and 7 without priority inheritance.  */
-    txm_module_object_allocate(&mutex_0, sizeof(TX_MUTEX));
+    status = txm_module_object_allocate(&mutex_0, sizeof(TX_MUTEX));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate mutex_0: %d", status);
     tx_mutex_create(mutex_0, "mutex 0", TX_NO_INHERIT);
 
     /* Allocate the memory for a small block pool.  */
     tx_byte_allocate(byte_pool_0, (VOID **) &pointer, DEMO_BLOCK_POOL_SIZE, TX_NO_WAIT);
 
     /* Create a block memory pool to allocate a message buffer from.  */
-    txm_module_object_allocate(&block_pool_0, sizeof(TX_BLOCK_POOL));
+    status = txm_module_object_allocate(&block_pool_0, sizeof(TX_BLOCK_POOL));
+    if (status != TX_SUCCESS)
+        log_e("Failed to allocate block_pool_0: %d", status);
     tx_block_pool_create(block_pool_0, "block pool 0", sizeof(ULONG), pointer, DEMO_BLOCK_POOL_SIZE);
 
     /* Allocate a block and release the block memory.  */
@@ -195,6 +219,8 @@ int rtos_demo_entry(void)
 
     /* Release the block back to the pool.  */
     tx_block_release(pointer);
+
+    return 0;
 }
 
 

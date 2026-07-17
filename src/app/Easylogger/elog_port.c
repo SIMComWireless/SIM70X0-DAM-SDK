@@ -32,6 +32,8 @@
 #include "qapi.h"
 #include "txm_module.h"
 #include "qapi_uart.h"
+#include "qapi_usb.h"
+#include "../demo/debug_port_cfg.h"
 
 #ifdef ELOG_ASYNC_OUTPUT_ENABLE
 
@@ -53,25 +55,37 @@ ElogErrCode elog_port_init(void) {
 	UINT status;
     ElogErrCode result = ELOG_NO_ERR;
 
-	txm_module_object_allocate(&elog_lockHandle, sizeof(TX_MUTEX)); 
+	status = txm_module_object_allocate(&elog_lockHandle, sizeof(TX_MUTEX));
+	if(status != TX_SUCCESS)
+    {
+      Debug_Printf("Failed to allocate elog_lockHandle: %d\r\n", status);
+    }
 	status = tx_mutex_create(elog_lockHandle,"elog_lockHandle",TX_NO_INHERIT);
 	if(status != TX_SUCCESS)
     {
-      Debug_Printf("Failed to start elog_lockHandle\r\n");
+      Debug_Printf("Failed to create elog_lockHandle: %d\r\n", status);
     }
 
-	txm_module_object_allocate(&elog_asyncHandle, sizeof(TX_SEMAPHORE)); 
+	status = txm_module_object_allocate(&elog_asyncHandle, sizeof(TX_SEMAPHORE));
+	if(status != TX_SUCCESS)
+    {
+      Debug_Printf("Failed to allocate elog_asyncHandle: %d\r\n", status);
+    }
 	status = tx_semaphore_create(elog_asyncHandle,"elog_asyncHandle", 0);
 	if(status != TX_SUCCESS)
     {
-      Debug_Printf("Failed to start elog_asyncHandle\r\n");
+      Debug_Printf("Failed to create elog_asyncHandle: %d\r\n", status);
     }
 
-	txm_module_object_allocate(&elog_dma_lockHandle, sizeof(TX_SEMAPHORE)); 
+	status = txm_module_object_allocate(&elog_dma_lockHandle, sizeof(TX_SEMAPHORE));
+	if(status != TX_SUCCESS)
+    {
+      Debug_Printf("Failed to allocate elog_dma_lockHandle: %d\r\n", status);
+    }
 	status = tx_semaphore_create(elog_dma_lockHandle,"elog_dma_lockHandle", 0);
 	if(status != TX_SUCCESS)
     {
-      Debug_Printf("Failed to start elog_dma_lockHandle\r\n");
+      Debug_Printf("Failed to create elog_dma_lockHandle: %d\r\n", status);
     }
 	
     return result;
@@ -83,7 +97,7 @@ ElogErrCode elog_port_init(void) {
  * @return result
  */
 ElogErrCode elog_port_deinit(void) {
-
+    return ELOG_NO_ERR;
 }
 
 /**
@@ -93,9 +107,12 @@ ElogErrCode elog_port_deinit(void) {
  * @param size log size
  */
 void elog_port_output(const char *log, size_t size) {
-    /* add your code here */
 	UART_Write(size, log);
+#ifdef DEBUG_USE_UART
+	/* UART uses async DMA — wait for TX completion callback */
 	tx_semaphore_get(elog_dma_lockHandle, TX_WAIT_FOREVER);
+#endif
+	/* USB: qapi_USB_Write already returned after blocking write */
 }
 
 /**

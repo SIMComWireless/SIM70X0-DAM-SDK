@@ -81,29 +81,30 @@ char * fs_demo_error_to_string(qapi_FS_Status_t status)
 }
 
 /**
- * @brief Open a file with explicit mode.
+ * @brief Open a file with an explicit mode.
  *
- * Wrapper around `qapi_FS_Open_With_Mode` that logs the result.
+ * Wrapper around qapi_FS_Open_With_Mode() that logs success or failure.
  *
- * @param[in] Path Path to the file to open (null-terminated).
- * @param[in] Oflag Open flags (QAPI_FS_O_*).
- * @param[in] Mode File mode bits (qapi_FS_Mode_t).
- * @param[in,out] Fd_ptr File descriptor output (caller-provided storage).
+ * @param[in]  Path   Null-terminated path to the file to open.
+ * @param[in]  Oflag  Open flags (QAPI_FS_O_*).
+ * @param[in]  Mode   File mode bits (qapi_FS_Mode_t).
+ * @param[out] Fd_ptr Pointer to int that receives the file descriptor.
  *
- * @return qapi_Status_t QAPI_OK on success or an error code on failure.
+ * @retval QAPI_OK  File opened successfully.
+ * @retval Other    qapi_FS_Open_With_Mode() error code.
  */
-qapi_Status_t fs_demo_Open_With_Mode(char *Path, int Oflag, qapi_FS_Mode_t Mode, int Fd_ptr)
+qapi_Status_t fs_demo_Open_With_Mode(char *Path, int Oflag, qapi_FS_Mode_t Mode, int *Fd_ptr)
 {
     qapi_Status_t status;
-	
-    status = qapi_FS_Open_With_Mode(Path, Oflag,Mode,&Fd_ptr);
+
+    status = qapi_FS_Open_With_Mode(Path, Oflag, Mode, Fd_ptr);
     if (status != QAPI_OK)
     {
-        log_i("open with mode failed !!! %s",fs_demo_error_to_string(status));
+        log_e("open with mode failed: %s", fs_demo_error_to_string(status));
     }
     else
     {
-        log_i("open with mode succeeded !!!");
+        log_i("open with mode succeeded, fd=%d", *Fd_ptr);
     }
     return status;
 }
@@ -111,26 +112,27 @@ qapi_Status_t fs_demo_Open_With_Mode(char *Path, int Oflag, qapi_FS_Mode_t Mode,
 /**
  * @brief Open a file.
  *
- * Convenience wrapper around `qapi_FS_Open` that logs success/failure.
+ * Convenience wrapper around qapi_FS_Open() that logs success or failure.
  *
- * @param[in] Path Path to file to open (null-terminated).
- * @param[in] Oflag Open flags (QAPI_FS_O_*).
- * @param[in,out] Fd_ptr File descriptor output (caller-provided storage).
+ * @param[in]  Path   Null-terminated path to the file to open.
+ * @param[in]  Oflag  Open flags (QAPI_FS_O_*).
+ * @param[out] Fd_ptr Pointer to int that receives the file descriptor.
  *
- * @return qapi_Status_t QAPI_OK on success, otherwise an error code.
+ * @retval QAPI_OK  File opened successfully.
+ * @retval Other    qapi_FS_Open() error code.
  */
-qapi_Status_t fs_demo_Open(char *Path, int Oflag, int Fd_ptr)
+qapi_Status_t fs_demo_Open(char *Path, int Oflag, int *Fd_ptr)
 {
     qapi_Status_t status;
-	
-    status = qapi_FS_Open(Path, Oflag, &Fd_ptr);
+
+    status = qapi_FS_Open(Path, Oflag, Fd_ptr);
     if (status != QAPI_OK)
     {
-        log_i("open file failed !!! %s",fs_demo_error_to_string(status));
+        log_e("open file failed: %s", fs_demo_error_to_string(status));
     }
     else
     {
-        log_i("open file succeeded !!!");
+        log_i("open file succeeded, fd=%d", *Fd_ptr);
     }
     return status;
 }
@@ -138,14 +140,15 @@ qapi_Status_t fs_demo_Open(char *Path, int Oflag, int Fd_ptr)
 /**
  * @brief Read from a file descriptor.
  *
- * Reads up to `Count` bytes into `Buf` using `qapi_FS_Read` and logs the
- * actual number of bytes read.
+ * Reads up to @p Count bytes into @p Buf using qapi_FS_Read() and logs
+ * the actual number of bytes read.
  *
- * @param[in] Fd_ptr File descriptor returned from open.
- * @param[out] Buf Buffer to receive data (must be large enough for Count).
- * @param[in] Count Number of bytes to read.
+ * @param[in]  Fd_ptr  File descriptor returned from fs_demo_Open().
+ * @param[out] Buf     Buffer to receive data (must be at least @p Count bytes).
+ * @param[in]  Count   Maximum number of bytes to read.
  *
- * @return qapi_Status_t QAPI_OK on success, otherwise an error code.
+ * @retval QAPI_OK  Read successful.
+ * @retval Other    qapi_FS_Read() error code.
  */
 qapi_Status_t fs_demo_Read(int Fd_ptr, uint8 * Buf, uint32 Count)
 { 
@@ -168,14 +171,15 @@ qapi_Status_t fs_demo_Read(int Fd_ptr, uint8 * Buf, uint32 Count)
 /**
  * @brief Write to a file descriptor.
  *
- * Writes `Count` bytes from `Buf` to `Fd_ptr` using `qapi_FS_Write` and
- * logs the actual number of bytes written.
+ * Writes @p Count bytes from @p Buf to @p Fd_ptr using qapi_FS_Write()
+ * and logs the actual number of bytes written.
  *
- * @param[in] Fd_ptr File descriptor returned from open.
- * @param[in] Buf Buffer containing data to write.
- * @param[in] Count Number of bytes to write.
+ * @param[in] Fd_ptr  File descriptor returned from fs_demo_Open().
+ * @param[in] Buf     Buffer containing data to write.
+ * @param[in] Count   Number of bytes to write.
  *
- * @return qapi_Status_t QAPI_OK on success, otherwise an error code.
+ * @retval QAPI_OK  Write successful.
+ * @retval Other    qapi_FS_Write() error code.
  */
 qapi_Status_t fs_demo_Write(int Fd_ptr, uint8 * Buf, uint32 Count)
 {
@@ -199,9 +203,10 @@ qapi_Status_t fs_demo_Write(int Fd_ptr, uint8 * Buf, uint32 Count)
 /**
  * @brief Close an open file descriptor.
  *
- * @param[in] Fd_ptr File descriptor to close.
+ * @param[in] Fd_ptr  File descriptor to close.
  *
- * @return qapi_Status_t QAPI_OK on success, otherwise an error code.
+ * @retval QAPI_OK  File closed successfully.
+ * @retval Other    qapi_FS_Close() error code.
  */
 qapi_Status_t fs_demo_Close(int Fd_ptr)
 {
@@ -222,10 +227,11 @@ qapi_Status_t fs_demo_Close(int Fd_ptr)
 /**
  * @brief Rename a file or directory.
  *
- * @param[in] Old_Path Current path of the file/directory.
- * @param[in] New_Path New desired path.
+ * @param[in] Old_Path  Current path of the file/directory.
+ * @param[in] New_Path  New desired path.
  *
- * @return qapi_Status_t QAPI_OK on success, otherwise an error code.
+ * @retval QAPI_OK  Renamed successfully.
+ * @retval Other    qapi_FS_Rename() error code.
  */
 qapi_Status_t fs_demo_Rename(char * Old_Path, char * New_Path)
 {
@@ -246,9 +252,10 @@ qapi_Status_t fs_demo_Rename(char * Old_Path, char * New_Path)
 /**
  * @brief Remove a directory.
  *
- * @param[in] Path Directory path to remove.
+ * @param[in] Path  Directory path to remove.
  *
- * @return qapi_Status_t QAPI_OK on success, otherwise an error code.
+ * @retval QAPI_OK  Directory removed successfully.
+ * @retval Other    qapi_FS_Rm_Dir() error code.
  */
 qapi_Status_t fs_demo_Del_Dir(char * Path)
 {
@@ -267,12 +274,13 @@ qapi_Status_t fs_demo_Del_Dir(char * Path)
 }
 
 /**
- * @brief Make a directory with the specified mode.
+ * @brief Create a directory with the specified mode.
  *
- * @param[in] Path Directory path to create.
- * @param[in] Mode Mode flags for the created directory.
+ * @param[in] Path  Directory path to create.
+ * @param[in] Mode  Mode flags for the created directory.
  *
- * @return qapi_Status_t QAPI_OK on success, otherwise an error code.
+ * @retval QAPI_OK  Directory created successfully.
+ * @retval Other    qapi_FS_Mk_Dir() error code.
  */
 qapi_Status_t fs_demo_Mk_Dir(char * Path, qapi_FS_Mode_t Mode)
 {
@@ -293,12 +301,11 @@ qapi_Status_t fs_demo_Mk_Dir(char * Path, qapi_FS_Mode_t Mode)
 /**
  * @brief Get file/directory statistics (size, inode, etc.).
  *
- * Wraps `qapi_FS_Stat` and returns the `st_size` on success.
+ * Wraps qapi_FS_Stat() and returns the file size on success.
  *
- * @param[in] Path Path to file/directory to stat.
+ * @param[in] Path  Null-terminated path to file/directory to stat.
  *
- * @return uint32 Size in bytes on success; caller should treat 0 as
- *         indication of failure in this wrapper (see logs for details).
+ * @return File size in bytes on success; 0 on failure (check logs).
  */
 uint32 fs_demo_Stat(const char* Path)
 {
@@ -312,24 +319,23 @@ uint32 fs_demo_Stat(const char* Path)
     }
     else
     {
-        log_i("get stat succeeded !!!");
-        log_i("SBuf.st_ino == %d",SBuf.st_ino);
-        log_i("SBuf.st_size == %d",SBuf.st_size);
-		return SBuf.st_size;
+        log_i("get stat succeeded: st_ino=%d, st_size=%d", SBuf.st_ino, SBuf.st_size);
+        return SBuf.st_size;
     }
-   
+    return 0;
 }
 
 
 /**
  * @brief Seek to an offset within a file.
  *
- * Uses `qapi_FS_Seek` to set the file offset and returns the QAPI status.
+ * Uses qapi_FS_Seek() to set the file position relative to the start.
  *
- * @param[in] Fd_ptr File descriptor to seek.
- * @param[in] offset Offset (in bytes) relative to start (SEEK_SET).
+ * @param[in] Fd_ptr  File descriptor to seek.
+ * @param[in] offset  Byte offset from the beginning of the file.
  *
- * @return qapi_Status_t QAPI_OK on success, otherwise an error code.
+ * @retval QAPI_OK  Seek successful.
+ * @retval Other    qapi_FS_Seek() error code.
  */
 qapi_Status_t fs_demo_seek(int Fd_ptr, long long offset)
 {

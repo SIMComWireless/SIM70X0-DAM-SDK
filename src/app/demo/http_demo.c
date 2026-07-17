@@ -218,15 +218,16 @@ DAM_Status_t HTTP_Connect(uint8_t * URL, uint16_t port)
 DAM_Status_t HTTP_Request(qapi_Net_HTTPc_Method_e cmd, uint8_t * URL)
 {
 	int error = QAPI_OK;
-	
+
 
 	log_i("req_cmd %d\n",cmd);
-	
+
 	if(QAPI_OK != qapi_FS_Iter_Open ("/http_demo", &iter_handle))
    	{
    	    qapi_FS_Mk_Dir ("/http_demo", 0x777);
 		return DAM_STATUS_ERROR;
    	}
+   	qapi_FS_Iter_Close(iter_handle);
    	qapi_FS_Unlink ("/http_demo/http_demo_test.html");
    	qapi_FS_Open ("/http_demo/http_demo_test.html", QAPI_FS_O_CREAT_E | QAPI_FS_O_TRUNC_E | QAPI_FS_O_RDWR_E, &fs_handle);
    	if(0 == qapi_Net_HTTPc_Request(http_demo_handle, cmd, (char*)URL))

@@ -65,105 +65,109 @@ uint32 crc32(uint8_t *data, uint32 length)
 }
 
 /**
- * @brief Verify a file using its trailing CRC32 and truncate on success.
+ * @brief Verify a file using its trailing CRC-32 and truncate on success.
  *
- * Reads the file at `Path` into `Buf` (up to `Buf_size`), computes the CRC32
- * over the file contents excluding the last 4 bytes, and compares against the
- * trailing CRC stored in the file. If the CRC matches the file is truncated
- * to remove the trailing CRC and success is returned.
+ * Reads the file at @p Path into @p Buf (up to @p Buf_size bytes),
+ * computes CRC-32 over the contents excluding the last 4 bytes, and
+ * compares against the trailing CRC stored in the file.  On match the
+ * file is truncated to remove the trailing CRC.
  *
- * @param[in] Path Path to the file to verify.
- * @param[out] Buf Buffer provided by caller to read file contents into.
- * @param[in] Buf_size Size of the provided buffer in bytes.
- * @return DAM_Status_t DAM_STATUS_SUCCESS if CRC matches; DAM_STATUS_ERROR otherwise.
+ * @param[in]  Path     Path to the file to verify.
+ * @param[out] Buf      Caller-provided scratch buffer.
+ * @param[in]  Buf_size Size of @p Buf in bytes.
+ *
+ * @retval DAM_STATUS_SUCCESS  CRC matches; file truncated.
+ * @retval DAM_STATUS_ERROR    CRC mismatch or file error.
  */
-DAM_Status_t file_check(char *Path,uint8 * Buf,uint32 Buf_size)
+DAM_Status_t file_check(char *Path, uint8 *Buf, uint32 Buf_size)
 {
-	int Fd_ptr;
-	uint32 len=0;
-	uint32 CRC=0;
-	char crc_buf[4] = {0};
-	uint32 i=0,outLen=0;
+    int Fd_ptr;
+    uint32 len = 0;
+    uint32 CRC = 0;
+    char crc_buf[4] = {0};
+    uint32 i = 0, outLen = 0;
 
-	memset(crc_buf, 0, 4);
-	memset(Buf, 0, Buf_size);
-	
-	
-	len = fs_demo_Stat(Path);
-	outLen = len;
-	
-	fs_demo_Open(Path, QAPI_FS_O_RDWR_E, Fd_ptr);
-	do 
-	{
-		if (outLen > 32767)
-		{
-			fs_demo_Read(Fd_ptr, Buf+i, 32767);
-			i += 32767;
-			outLen -= 32767;
-		}
-		else
-		{	
-			fs_demo_Read(Fd_ptr, Buf+i, outLen);
-			outLen = 0;
-		}
-		
-	}while(outLen > 0);
-	fs_demo_Close(Fd_ptr);
+    memset(crc_buf, 0, 4);
+    memset(Buf, 0, Buf_size);
 
-	memcpy(crc_buf,Buf+(len-4),4);
-	CRC = ((uint32)crc_buf[0] << 24) | ((uint32)crc_buf[1] << 16) | ((uint32)crc_buf[2] << 8) | ((uint32)crc_buf[3]);
-	Debug_Printf("CRC_BUF=:0x%x,0x%x,0x%x,0x%x\r\n",crc_buf[0],crc_buf[1],crc_buf[2],crc_buf[3]);
-	Debug_Printf("CRC:0x%x\r\n",CRC);
-	if (CRC == crc32(Buf, len-4))
-		{
-		qapi_FS_Truncate(Path, len-4);
-		Debug_Printf("file check successful!!\r\n");
-		return DAM_STATUS_SUCCESS;
-		}
-	else
-		{
-		//qapi_FS_Truncate(Path, 0);
-		Debug_Printf("file check failed!!\r\n");
-		return DAM_STATUS_ERROR;
-		}
-	
+    len = fs_demo_Stat(Path);
+    if (len <= 4)
+    {
+        Debug_Printf("file too small for CRC check\r\n");
+        return DAM_STATUS_ERROR;
+    }
+    outLen = len;
 
+    if (fs_demo_Open(Path, QAPI_FS_O_RDWR_E, &Fd_ptr) != QAPI_OK)
+    {
+        Debug_Printf("file_check: open failed\r\n");
+        return DAM_STATUS_ERROR;
+    }
+
+    do
+    {
+        uint32 chunk = (outLen > 32767) ? 32767 : outLen;
+        fs_demo_Read(Fd_ptr, Buf + i, chunk);
+        i += chunk;
+        outLen -= chunk;
+    } while (outLen > 0);
+
+    fs_demo_Close(Fd_ptr);
+
+    memcpy(crc_buf, Buf + (len - 4), 4);
+    CRC = ((uint32)crc_buf[0] << 24) | ((uint32)crc_buf[1] << 16) |
+          ((uint32)crc_buf[2] << 8)  |  (uint32)crc_buf[3];
+    Debug_Printf("CRC_BUF:0x%x,0x%x,0x%x,0x%x\r\n",
+                 crc_buf[0], crc_buf[1], crc_buf[2], crc_buf[3]);
+    Debug_Printf("CRC:0x%x\r\n", CRC);
+
+    if (CRC == crc32(Buf, len - 4))
+    {
+        qapi_FS_Truncate(Path, len - 4);
+        Debug_Printf("file check successful!!\r\n");
+        return DAM_STATUS_SUCCESS;
+    }
+    else
+    {
+        Debug_Printf("file check failed!!\r\n");
+        return DAM_STATUS_ERROR;
+    }
 }
 
 /**
- * @brief Check the application update result state.
+ * @brief Check the result of the last OTA update.
  *
- * Determines whether the last update completed successfully by checking
- * presence of update artifacts in the filesystem.
+ * Determines success by verifying that @c /custapp/update.log exists
+ * while @c /custapp/cust_app.update no longer remains.
  *
- * @return DAM_Status_t DAM_STATUS_SUCCESS if update succeeded; DAM_STATUS_ERROR otherwise.
+ * @retval DAM_STATUS_SUCCESS  Update completed successfully.
+ * @retval DAM_STATUS_ERROR    Update failed or state unknown.
  */
 DAM_Status_t update_state_check(VOID)
 {
-	int Fd_ptr;
-	
-	if (qapi_FS_Open("/custapp/update.log", QAPI_FS_O_RDWR_E, &Fd_ptr)==QAPI_OK)
-		{
-		fs_demo_Close(Fd_ptr);
-		if (qapi_FS_Open("/custapp/cust_app.update", QAPI_FS_O_RDWR_E, &Fd_ptr) == QAPI_ERR_NO_ENTRY)
-			{
-			Debug_Printf("update successful!!\r\n");
-		    return DAM_STATUS_SUCCESS;
-			}
-		else
-			{
-			fs_demo_Close(Fd_ptr);
-			Debug_Printf("update failed!!\r\n");
-		    return DAM_STATUS_ERROR;
-			}
-				
-		}
-	else
-		{
-		Debug_Printf("update failed!!\r\n");
-		return DAM_STATUS_ERROR;
-		}
+    int Fd_ptr;
 
+    if (qapi_FS_Open("/custapp/update.log", QAPI_FS_O_RDWR_E, &Fd_ptr) == QAPI_OK)
+    {
+        fs_demo_Close(Fd_ptr);
+        if (qapi_FS_Open("/custapp/cust_app.update", QAPI_FS_O_RDWR_E,
+                         &Fd_ptr) == QAPI_ERR_NO_ENTRY)
+        {
+            Debug_Printf("update successful!!\r\n");
+            return DAM_STATUS_SUCCESS;
+        }
+        else
+        {
+            fs_demo_Close(Fd_ptr);
+            Debug_Printf("update failed!!\r\n");
+            return DAM_STATUS_ERROR;
+        }
+    }
+    else
+    {
+        Debug_Printf("update failed!!\r\n");
+        return DAM_STATUS_ERROR;
+    }
 }
 
 

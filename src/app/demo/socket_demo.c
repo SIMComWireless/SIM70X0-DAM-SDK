@@ -106,118 +106,125 @@ static uint32 simcom_ipaddr8_to_32(uint8 *buf,uint32 *ipaddr)
 }
 
 /**
- * @brief Simple blocking TCP client demo: connect, send, receive, close.
+ * @brief Simple blocking TCP client demo.
  *
- * Creates a TCP socket, connects to `url:port`, sends `data`, waits for a
- * single response, then closes the socket.
+ * Creates a TCP socket, connects to @p url : @p port, sends @p data,
+ * waits for a single response, then closes the socket.
  *
- * @param[in] url IPv4 address string (dotted-quad) or hostname.
- * @param[in] port Destination TCP port.
- * @param[in] data Null-terminated data buffer to send.
+ * @param[in] url   IPv4 address string (dotted-quad).
+ * @param[in] port  Destination TCP port.
+ * @param[in] data  Null-terminated data buffer to send.
  *
- * @return DAM_Status_t DAM_STATUS_SUCCESS on success; DAM_STATUS_ERROR on failure.
+ * @retval DAM_STATUS_SUCCESS  Transaction completed successfully.
+ * @retval DAM_STATUS_ERROR    Connect, send, or receive failed.
  */
-DAM_Status_t socket_demo_TCP(char *url,int port,char *data)
-{    
+DAM_Status_t socket_demo_TCP(char *url, int port, char *data)
+{
     int tcp_fd;
     struct sockaddr_in dest_addr;
+    DAM_Status_t result = DAM_STATUS_ERROR;
 
-	
     memset(&dest_addr, 0x00, sizeof(struct sockaddr_in));
-    //send TCP packet
+
     tcp_fd = qapi_socket(AF_INET, SOCK_STREAM, 0);
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(port);
     simcom_ipaddr8_to_32((uint8 *)url, (uint32 *)&dest_addr.sin_addr.s_addr);
     memset(dest_addr.sin_zero, 0x00, 8);
-    if(0 == qapi_connect(tcp_fd, (struct sockaddr * )&dest_addr, sizeof(dest_addr)))
+
+    if (0 == qapi_connect(tcp_fd, (struct sockaddr *)&dest_addr,
+                          sizeof(dest_addr)))
     {
-        int len,bytes_send;
-        len = strlen(data);
-        bytes_send = qapi_send(tcp_fd, data, len, 0);
-        if(bytes_send > 0)
+        int len = strlen(data);
+        int bytes_send = qapi_send(tcp_fd, data, len, 0);
+        if (bytes_send > 0)
         {
-        	log_i("Socket_demo_TCP send %d bytes of data",bytes_send);
+            log_i("Socket_demo_TCP send %d bytes", bytes_send);
             char buf[512] = {0};
-            int bytes_recv = 0;
-			log_i("Waiting socket rev");
-            bytes_recv = qapi_recv(tcp_fd, buf, 512, 0);
-            if(bytes_recv > 0)
+            int bytes_recv = qapi_recv(tcp_fd, buf, 512, 0);
+            if (bytes_recv > 0)
             {
-                log_i("TCP Receive data: len=%d,data=%s", strlen(buf), buf);
+                log_i("TCP recv: len=%d, data=%s", bytes_recv, buf);
+                result = DAM_STATUS_SUCCESS;
             }
             else
             {
-                log_i("Receive TCP packet error!");
+                log_e("TCP recv error");
             }
         }
         else
         {
-           log_i("Send TCP packet error!");
+            log_e("TCP send error");
         }
     }
     else
     {
-        log_i("Connect error!");
+        log_e("TCP connect error");
     }
+
     qapi_socketclose(tcp_fd);
-	log_i("TCP Socket Closed");
-	return DAM_STATUS_SUCCESS;
+    log_i("TCP Socket Closed");
+    return result;
 }
 
 /**
- * @brief Simple blocking UDP demo: sendto, recvfrom, close.
+ * @brief Simple blocking UDP demo.
  *
- * Creates a UDP socket and sends `data` to `url:port`, then performs a
- * single `recvfrom` to retrieve a response before closing the socket.
+ * Creates a UDP socket, sends @p data to @p url : @p port via sendto,
+ * performs a single recvfrom for the response, then closes the socket.
  *
- * @param[in] url IPv4 address string (dotted-quad) or hostname.
- * @param[in] port Destination UDP port.
- * @param[in] data Null-terminated data buffer to send.
+ * @param[in] url   IPv4 address string (dotted-quad).
+ * @param[in] port  Destination UDP port.
+ * @param[in] data  Null-terminated data buffer to send.
  *
- * @return DAM_Status_t DAM_STATUS_SUCCESS on success; DAM_STATUS_ERROR on failure.
+ * @retval DAM_STATUS_SUCCESS  Transaction completed successfully.
+ * @retval DAM_STATUS_ERROR    Send or receive failed.
  */
-DAM_Status_t socket_demo_UDP(char *url,int port,char *data)
+DAM_Status_t socket_demo_UDP(char *url, int port, char *data)
 {
     int udp_fd;
     struct sockaddr_in dest_addr;
-	
-	
+    DAM_Status_t result = DAM_STATUS_ERROR;
+
     memset(&dest_addr, 0x00, sizeof(struct sockaddr_in));
     udp_fd = qapi_socket(AF_INET, SOCK_DGRAM, 0);
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(port);
     simcom_ipaddr8_to_32((uint8 *)url, (uint32 *)&dest_addr.sin_addr.s_addr);
     memset(dest_addr.sin_zero, 0x00, 8);
-	
+
     {
-        int len,bytes_send;
-        len = strlen(data);
-        bytes_send = qapi_sendto(udp_fd, data, len, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-        if(bytes_send > 0)
+        int len = strlen(data);
+        int bytes_send = qapi_sendto(udp_fd, data, len, 0,
+                                     (struct sockaddr *)&dest_addr,
+                                     sizeof(dest_addr));
+        if (bytes_send > 0)
         {
-        	log_i("Socket_demo_UDP send %d bytes of data",bytes_send);
+            log_i("Socket_demo_UDP send %d bytes", bytes_send);
             char buf[512] = {0};
-            int bytes_recv = 0;
             int fromlen = sizeof(struct sockaddr);
-            bytes_recv = qapi_recvfrom(udp_fd, buf, 512, 0, (struct sockaddr *)&dest_addr, &fromlen);
-            if(bytes_recv > 0)
+            int bytes_recv = qapi_recvfrom(udp_fd, buf, 512, 0,
+                                           (struct sockaddr *)&dest_addr,
+                                           &fromlen);
+            if (bytes_recv > 0)
             {
-                log_i("UDP Receive data: len=%d,data=%s", strlen(buf), buf);
+                log_i("UDP recv: len=%d, data=%s", bytes_recv, buf);
+                result = DAM_STATUS_SUCCESS;
             }
             else
             {
-                log_i("Receive UDP packet error!");
+                log_e("UDP recv error");
             }
         }
         else
         {
-            log_i("Send UDP packet error=%d", qapi_errno(udp_fd));
+            log_e("UDP send error=%d", qapi_errno(udp_fd));
         }
     }
+
     qapi_socketclose(udp_fd);
-	log_i("UDP Socket Closed");
-	return DAM_STATUS_SUCCESS;
+    log_i("UDP Socket Closed");
+    return result;
 }
 
 

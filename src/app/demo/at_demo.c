@@ -32,11 +32,18 @@
 
 /*-------------------------------------------------------------------------
  * Static & global Variable Declarations
+ *
+ * NOTE: `data` is intentionally global because At_Output_Cb() runs in
+ *       a callback context with a very limited stack.  Access must be
+ *       serialised by the caller (only one AT transaction at a time).
  *-----------------------------------------------------------------------*/
 extern TX_SEMAPHORE *Update_semaphore;
 
-unsigned char data[2048] = {0};  
-unsigned char tempBuf[256] = {0};  
+/** @brief Buffer for AT response collection (limited-stack callback). */
+static unsigned char data[2048] = {0};
+
+/** @brief Chunk buffer for logging AT responses line by line. */
+static unsigned char tempBuf[256] = {0};  
 
 
 /**
@@ -91,41 +98,65 @@ static void At_Output_Cb(void)
 }
 
 /**
-  * @brief  send AT command to the DAM core.
-  * @param  ATCMD -- AT command string(no need \r\n, the API will add it in the end automatically)
-  * @note   After open the AT channel, need to flush all previously recerived data by qapi_DAM_Visual_AT_Output, or AT command channel will get blocked so callback will work abnormally.
-  * @retval DAM_Status_t -- DAM_STATUS_SUCCESS or DAM_STATUS_ERROR.
-  */
+ * @brief Send an AT command via the DAM visual AT channel.
+ *
+ * Opens the visual AT channel on first call, flushes any stale data,
+ * then sends the command appended with CRLF.
+ *
+ * @param[in] ATCMD  Null-terminated AT command string (CRLF is appended
+ *                   automatically).
+ *
+ * @retval DAM_STATUS_SUCCESS  Command sent.
+ *
+ * @note After opening the AT channel the function flushes all previously
+ *       received data via qapi_DAM_Visual_AT_Output(); otherwise the
+ *       channel gets blocked and the callback works abnormally.
+ */
 DAM_Status_t atcmd(uint8_t *ATCMD)
-{   
-	unsigned char data[1024] = {0};       
-	static unsigned char s_at_open=0,s_start=0;
-	int len=0;
-	if(!s_at_open)
-	{
-		s_at_open=1;
-		qapi_DAM_Visual_AT_Open(At_Output_Cb);
-		log_i("AT Opened");
-	}
-	else
-	{
-		log_i("AT already Opened");
-	}
+{
+    /* Must be static — the DAM framework may hold a pointer to this
+     * buffer across calls, and a stack-local would be invalidated. */
+    static unsigned char at_cmd[1024] = {0};
+    static unsigned char s_at_open = 0;
+    static unsigned char s_start  = 0;
+    int len = 0;
 
-	if(!s_start)
-	{
-		s_start=1;
-		while(len = qapi_DAM_Visual_AT_Output((unsigned char *)&data[0],1024))
-			log_i("DAM AT Read len=%d %s",len,data);
-	}
+    if (!s_at_open)
+    {
+        s_at_open = 1;
+        qapi_DAM_Visual_AT_Open(At_Output_Cb);
+        log_i("AT channel opened");
+    }
 
-	memset(data,0,1024);   
-	memcpy(data,ATCMD,strlen((char *)ATCMD));
-	log_i("atcmd is:%s", data); 
-	memcpy(data+strlen((char *)data),"\r\n",2);
-	qapi_DAM_Visual_AT_Input(data,strlen((char *)data));
+    /* First-time flush: drain any stale data left in the AT pipe so
+     * the callback does not get blocked by old responses. */
+    if (!s_start)
+    {
+        s_start = 1;
+        memset(at_cmd, 0, sizeof(at_cmd));
+        while ((len = qapi_DAM_Visual_AT_Output(at_cmd, sizeof(at_cmd) - 1)) > 0)
+        {
+            at_cmd[len] = '\0';   /* null-terminate for safe logging */
+            log_i("AT flush [%d]: %s", len, at_cmd);
+            memset(at_cmd, 0, sizeof(at_cmd));
+        }
+    }
 
-	return DAM_STATUS_SUCCESS;   
+    /* Build and send the command */
+    memset(at_cmd, 0, sizeof(at_cmd));
+    len = strlen((char *)ATCMD);
+    if (len + 2 > (int)sizeof(at_cmd))
+    {
+        log_e("AT command too long (%d bytes)", len);
+        return DAM_STATUS_ERROR;
+    }
+    memcpy(at_cmd, ATCMD, len);
+    at_cmd[len]     = '\r';
+    at_cmd[len + 1] = '\n';
+    log_i("AT send: %s", ATCMD);
+    qapi_DAM_Visual_AT_Input(at_cmd, len + 2);
+
+    return DAM_STATUS_SUCCESS;
 }
 
 

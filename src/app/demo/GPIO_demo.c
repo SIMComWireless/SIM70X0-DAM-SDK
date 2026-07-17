@@ -231,31 +231,52 @@ DAM_Status_t gpio_write_pin(uint32_t gpio_num, GPIO_Level_t level)
   * @note   
   * @retval DAM_Status_t -- DAM_STATUS_SUCCESS or DAM_STATUS_ERROR.
   */
-DAM_Status_t gpio_read_pin(uint32_t gpio_num , GPIO_Level_t *level)
+/**
+ * @brief Read the current level of a GPIO pin.
+ *
+ * Looks up the pin in the internal GpioCtr table and reads its
+ * current value via qapi_TLMM_Read_Gpio().
+ *
+ * @param[in]  gpio_num  Pin number (see DAM_GPIO_PINMAP).
+ * @param[out] level     Pointer that receives the pin level.
+ *
+ * @retval DAM_STATUS_SUCCESS  Pin read successfully.
+ * @retval DAM_STATUS_ERROR    Pin not registered or read failed.
+ */
+DAM_Status_t gpio_read_pin(uint32_t gpio_num, GPIO_Level_t *level)
 {
-    qapi_Status_t      status;
-	  qapi_GPIO_ID_t     v_gpio_id;    
-	  qapi_GPIO_Value_t  gpio_value;
-	  uint32_t n, i;
-	
-	  n = (uint32_t) gpio_num;
+    qapi_Status_t      status = QAPI_ERROR;
+    qapi_GPIO_ID_t     v_gpio_id = 0;
+    qapi_GPIO_Value_t  gpio_value = QAPI_GPIO_LOW_VALUE_E;
+    uint32_t n, i;
+    bool found = false;
 
-    for(i = 0; i<GPIONUMMAX; i++)
+    n = (uint32_t)gpio_num;
+
+    for (i = 0; i < GPIONUMMAX; i++)
     {
-      if(GpioCtr[i*2] == n && GpioCtr[i*2 +1] != 0 )
-      {
-        v_gpio_id = GpioCtr[i*2 +1];
-        status = qapi_TLMM_Read_Gpio(v_gpio_id, gpio_num, &gpio_value);
-        break;
-      }
+        if (GpioCtr[i * 2] == n && GpioCtr[i * 2 + 1] != 0)
+        {
+            v_gpio_id = GpioCtr[i * 2 + 1];
+            status = qapi_TLMM_Read_Gpio(v_gpio_id, gpio_num, &gpio_value);
+            found = true;
+            break;
+        }
     }
-    if(gpio_value == QAPI_GPIO_LOW_VALUE_E)
+
+    if (!found)
     {
-      *level = GPIO_LOW_LEVEL;
+        log_e("gpio_read_pin: pin %d not registered", gpio_num);
+        return DAM_STATUS_ERROR;
     }
-    else
+
+    if (status != QAPI_OK)
     {
-      *level = GPIO_HIGH_LEVEL;
+        log_e("gpio_read_pin: read failed for pin %d", gpio_num);
+        return DAM_STATUS_ERROR;
     }
+
+    *level = (gpio_value == QAPI_GPIO_LOW_VALUE_E) ? GPIO_LOW_LEVEL
+                                                    : GPIO_HIGH_LEVEL;
     return DAM_STATUS_SUCCESS;
 }

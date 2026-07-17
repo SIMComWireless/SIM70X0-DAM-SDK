@@ -51,27 +51,28 @@ void *data_malloc(uint32_t size)
 }
 
 /**
- * @brief Release memory previously allocated with `data_malloc`.
+ * @brief Release memory previously allocated with data_malloc().
  *
- * @param[in] data Pointer returned by `data_malloc` (NULL-safe).
+ * @param[in] data  Pointer returned by data_malloc().  Passing NULL
+ *                  is safe and results in a no-op.
  */
 void data_free(void *data)
 {
-  uint32_t status = 0;
-  
-  if(NULL == data)
-  {
-    return;
-  }
+    uint32_t status;
 
-  status = tx_byte_release(data);
-  
-  if (TX_SUCCESS != status)
-  {
-    log_i("DAM_APP:Failed to release memory with %d", status); 
-  }
+    if (NULL == data)
+    {
+        return;
+    }
 
-  data = NULL;
+    status = tx_byte_release(data);
+
+    if (TX_SUCCESS != status)
+    {
+        log_e("DAM_APP: Failed to release memory, status=%d", status);
+    }
+    /* Note: setting a local copy to NULL has no effect on the caller.
+     * Callers should NULL their own pointer after calling data_free(). */
 }
 
 /**

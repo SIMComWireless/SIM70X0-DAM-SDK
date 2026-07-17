@@ -155,16 +155,16 @@ static void mqtt_connect_callback(qapi_Net_MQTT_Hndl_t mqtt, int32_t reason)
 }
 
 /**
- * @brief MQTT subscribe/subscribe-message callback.
+ * @brief MQTT subscribe / subscribe-message callback.
  *
  * Handles subscribe acknowledgements and incoming subscribe messages.
  *
- * @param[in] mqtt MQTT handle.
- * @param[in] reason Reason code for the subscribe event.
- * @param[in] topic Topic buffer (not necessarily null-terminated).
- * @param[in] topic_length Length of the topic buffer.
- * @param[in] qos QoS associated with the subscription/event.
- * @param[in] sid Optional session id pointer.
+ * @param[in] mqtt          MQTT handle.
+ * @param[in] reason        Reason code for the subscribe event.
+ * @param[in] topic         Topic buffer (not necessarily null-terminated).
+ * @param[in] topic_length  Length of the topic buffer.
+ * @param[in] qos           QoS associated with the subscription/event.
+ * @param[in] sid           Optional session id pointer.
  */
 static void mqtt_subscribe_callback(qapi_Net_MQTT_Hndl_t mqtt,
     int32_t reason,
@@ -173,30 +173,24 @@ static void mqtt_subscribe_callback(qapi_Net_MQTT_Hndl_t mqtt,
     int32_t qos,
     const void *sid)
 {
+    switch (reason)
+    {
+        case QAPI_NET_MQTT_SUBSCRIBE_GRANTED_E:
+            log_i("MQTT DAM: Subscribe Granted");
+            break;
 
-  switch(reason)
-	{
-		case QAPI_NET_MQTT_SUBSCRIBE_GRANTED_E:
-			{      
-				log_i("MQTT DAM: Subscribe Granted");      
-			}
-		break;
-			
-		case QAPI_NET_MQTT_SUBSCRIBE_DENIED_E:
-			{      
-				log_i("MQTT DAM: Subscribe Denied");      
-			}
-		break;
-			
-		case QAPI_NET_MQTT_SUBSCRIBE_MSG_E:
-			{      
-				log_i("MQTT DAM: Subscribe Messafe");      
-			}
-		break;
+        case QAPI_NET_MQTT_SUBSCRIBE_DENIED_E:
+            log_e("MQTT DAM: Subscribe Denied");
+            break;
 
-		default:break;
-				log_e("MQTT DAM: Subscribe Callback - Unknown reason %d \n", reason);
-	}
+        case QAPI_NET_MQTT_SUBSCRIBE_MSG_E:
+            log_i("MQTT DAM: Subscribe Message");
+            break;
+
+        default:
+            log_e("MQTT DAM: Subscribe Callback - Unknown reason %d", reason);
+            break;
+    }
 }
 
 /**
@@ -336,38 +330,35 @@ int mqtt_connect(char *remote_addr,int remote_port)
   sin4->sin_family = AF_INET;
   sin4->sin_port = htons(remote_port);
 
-  if (inet_pton(AF_INET,remote_addr, &sin4->sin_addr.s_addr) == 0)
+  if (inet_pton(AF_INET, remote_addr, &sin4->sin_addr.s_addr) == 1)
   {
-	
-  }
-  else 
-  {
-  	
-  log_e("inet_pton error");
-  log_i("try to do DNS");
-  resolved_ip.type = AF_INET;
-  ret = qapi_Net_DNSc_Reshost(remote_addr, &resolved_ip);
-  log_i(
-
-"qapi_Net_DNSc_Reshost:%x",ret);
-  if(QAPI_DSS_SUCCESS == ret)
-  {
-	  memcpy(&sin4->sin_addr.s_addr,&resolved_ip.a,4);
-	  log_i("DAM_APP:DNS done for %s", remote_addr);
-	  if(inet_ntop(AF_INET, &(resolved_ip.a), ip_str, sizeof(CHAR)*IP_ADDR_SIZE))
-	  {
-		  log_i("DAM_APP:%s --> %s", remote_addr, ip_str);
-	  }
-	  else
-	  {
-		  log_i("DAM_APP:%s --> NULL", remote_addr);
-	  }
+      /* remote_addr is already a valid IPv4 address string */
+      log_i("DAM_APP: Using IP address %s directly", remote_addr);
   }
   else
   {
-	  log_i("DAM_APP:Fail to resolve %s for IPv4", remote_addr);
-  }
-
+      /* Not a valid IP — try DNS resolution */
+      log_i("DAM_APP: Resolving hostname %s via DNS", remote_addr);
+      resolved_ip.type = AF_INET;
+      ret = qapi_Net_DNSc_Reshost(remote_addr, &resolved_ip);
+      log_i("qapi_Net_DNSc_Reshost: 0x%x", ret);
+      if (QAPI_DSS_SUCCESS == ret)
+      {
+          memcpy(&sin4->sin_addr.s_addr, &resolved_ip.a, 4);
+          if (inet_ntop(AF_INET, &(resolved_ip.a), ip_str,
+                        sizeof(CHAR) * IP_ADDR_SIZE))
+          {
+              log_i("DAM_APP: %s --> %s", remote_addr, ip_str);
+          }
+          else
+          {
+              log_i("DAM_APP: %s --> (inet_ntop failed)", remote_addr);
+          }
+      }
+      else
+      {
+          log_e("DAM_APP: Failed to resolve %s for IPv4", remote_addr);
+      }
   }
 
   ret = qapi_Net_MQTT_Connect(mqtt_handle, &mqtt_config);

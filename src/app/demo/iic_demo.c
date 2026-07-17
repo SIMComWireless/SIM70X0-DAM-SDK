@@ -55,18 +55,26 @@ DAM_Status_t iic_init(void)
   if(iic_initiled)
       return DAM_STATUS_SUCCESS;
 
-  txm_module_object_allocate(&iic_asyncHandle, sizeof(TX_SEMAPHORE)); 
+  status = txm_module_object_allocate(&iic_asyncHandle, sizeof(TX_SEMAPHORE));
+	if(status != TX_SUCCESS)
+  {
+    log_e("Failed to allocate iic_asyncHandle: %d", status);
+  }
 	status = tx_semaphore_create(iic_asyncHandle,"iic_asyncHandle", 0);
 	if(status != TX_SUCCESS)
   {
-    log_i("Failed to start iic_asyncHandle");
+    log_e("Failed to create iic_asyncHandle: %d", status);
   }
 
-  txm_module_object_allocate(&iic_protection, sizeof(TX_MUTEX)); 
+  status = txm_module_object_allocate(&iic_protection, sizeof(TX_MUTEX));
+	if(status != TX_SUCCESS)
+  {
+    log_e("Failed to allocate iic_protection: %d", status);
+  }
 	status = tx_mutex_create(iic_protection,"iic_protection", TX_NO_INHERIT);
 	if(status != TX_SUCCESS)
   {
-    log_i("Failed to start iic_protection");
+    log_e("Failed to create iic_protection: %d", status);
   }
 
 	res = qapi_I2CM_Open(QAPI_I2CM_INSTANCE_001_E, &iic_client_handle);
