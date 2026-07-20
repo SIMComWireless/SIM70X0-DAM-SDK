@@ -233,7 +233,7 @@ UINT qcli_dam_app_start(void)
     }
 
     log_i("demo app starts");
-#if 0
+
     /* ---- Create semaphores ---- */
     log_d("[PAL] 4:sem1 alloc");
     status = txm_module_object_allocate(&Net_Active_semaphore,
@@ -278,7 +278,7 @@ UINT qcli_dam_app_start(void)
         log_e("Failed to create Update_semaphore: %d", status);
         return status;
     }
-#endif
+
     /* ---- Create threads ---- */
 
 #ifdef HELLO_WORLD_TASK
